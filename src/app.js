@@ -1,6 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const cfg = require('./cfg.js');
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const Sequelize = require('sequelize');
 const helper = require('./helper.js');
 const kb = require('./keyboardButtons.js');
@@ -85,32 +85,45 @@ bot.on('message', msg => {
                 reply_markup: {keyboard: keyboard.procedurs}
             })
         case kb.BusyDates:
-            bot.sendMessage(chatId(msg), `Будь ласка, введіть дату і час у форматі: ДД.ММ ЧЧ:ММ`, {
-                reply_markup: {keyboard: keyboard.back}
-            })
-            bot.on('message', (msg) => {
-            if (msg.text && msg.text !== 'Процедури' && msg.text !== 'Повернутися' && msg.text !== 'Список процедур' && msg.text !== 'Зв\'язатися з керівництвом' && msg.text !== 'Записатися' && msg.text !== 'Манікюр' && msg.text !== 'Педикюр' && msg.text !== 'Професіональний подологічний огляд' && msg.text !== '/start') {
-                const input = msg.text.split(/(?:,|\s{2,}|\s|\n)+/);
-                const datee = input[0];
-                const timee = input[1];
-
-                const selectSql = `SELECT name, procedura FROM zapici WHERE datee = ? AND timee = ?`;
-                connection.query(selectSql, [datee, timee], (err, results) => {
-                    if (err) {
-                        bot.sendMessage(chatId(msg), `Приносимо вибачення, сталася помилка при отриманні записів. Відпишіть, будь ласка, @s0ulcats`);
-                    } else if (results.length === 0) {
-                        bot.sendMessage(chatId(msg), `На цю дату та час немає записів.`);
-                    } else {
-                        let response = 'Записи на ' + datee + ' ' + timee + ':\n';
-                        results.forEach((record, index) => {
-                            response += `${index + 1}. ${record.name} - ${record.procedura}\n`;
-                        });
-                        bot.sendMessage(chatId(msg), response);
+            bot.once('message', async (msg) => {
+                await bot.sendMessage(chatId(msg), `Будь ласка, введіть дату і час у форматі: ДД.ММ ЧЧ:ММ`, {
+                    reply_markup: {keyboard: keyboard.back}
+                });
+        
+                bot.once('message', async (msg) => {
+                    console.log('Received message:', msg.text);
+        
+                    if (msg.text && msg.text !== 'Процедури' && msg.text !== 'Повернутися' && msg.text !== 'Список процедур' && msg.text !== 'Зв\'язатися з керівництвом' && msg.text !== 'Записатися' && msg.text !== 'Манікюр' && msg.text !== 'Педикюр' && msg.text !== 'Професіональний подологічний огляд' && msg.text !== '/start') {
+                        const input = msg.text.split(/(?:,|\s{2,}|\s|\n)+/);
+                        const datee = input[0];
+                        const timee = input[1];
+        
+                        console.log('Parsed date and time:', datee, timee);
+        
+                        const selectSql = `SELECT name, procedura FROM zapici WHERE datee = ? AND timee = ?`;
+        
+                        try {
+                            const [rows] = await connection.promise().query(selectSql, [datee, timee]);
+        
+                            console.log('Query results:', rows);
+        
+                            if (rows.length === 0) {
+                                await bot.sendMessage(chatId(msg), `На цю дату та час немає записів.`);
+                            } else {
+                                let response = `Записи на ${datee} ${timee}:\n`;
+                                rows.forEach((record, index) => {
+                                    response += `${index + 1}. ${record.name} - ${record.procedura}\n`;
+                                });
+                                await bot.sendMessage(chatId(msg), response);
+                            }
+                        } catch (err) {
+                            console.error('Error executing query:', err);
+                            await bot.sendMessage(chatId(msg), `Приносимо вибачення, сталася помилка при отриманні записів. Відпишіть, будь ласка, @s0ulcats`);
+                        }
                     }
                 });
-            }
             });
-            break
+            break;
         case kb.record:
             bot.sendMessage(chatId(msg), `Заповніть, будь ласка, форму\nІм'я\nНомер телефону\nПроцедура\nДата\nЧас\nP.s. пишіть, будь ласка, все одним повідомленням. Час прийому з 8 до 18:30 (різниця між прийомом 1:30 год). Прохання перед записом перевіряти, чи є запис на цей час та дату (інакше база не запише вас на прийом). Дякую❤️`, {
                 reply_markup: {keyboard: keyboard.spisokProcedur}
