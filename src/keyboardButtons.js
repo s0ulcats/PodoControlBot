@@ -13,5 +13,6 @@ module.exports = {
     back: 'Повернутися',
     Cb: 'Зв\'язатися з керівництвом',
     procedursBack: 'Повернутися',
-    spisokProcedur: 'Список процедур'
+    spisokProcedur: 'Список процедур',
+    recordings: 'Записи'
 }

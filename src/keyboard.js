@@ -3,7 +3,7 @@ const kb = require("./keyboardButtons");
 
 module.exports = {
     home: [
-        [kb.record, kb.home.Procedurs, kb.BusyDates],
+        [kb.record, kb.home.Procedurs, kb.BusyDates, kb.recordings],
         [kb.Cb]
     ],
     procedurs: [

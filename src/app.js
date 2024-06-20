@@ -9,6 +9,8 @@ const keyboard = require('./keyboard.js');
 //const Model = db.podocontrol;
 const chatId = helper.getChatId;
 const moment = require('moment');
+const failedTime = require('./failed.js');
+const failed = require('./failed.js');
 
 const connection = mysql.createConnection({
     host: '127.0.0.1',
@@ -128,9 +130,8 @@ bot.on('message', msg => {
             bot.sendMessage(chatId(msg), `Заповніть, будь ласка, форму\nІм'я\nНомер телефону\nПроцедура\nДата\nЧас\nP.s. пишіть, будь ласка, все одним повідомленням. Час прийому з 8 до 18:30 (різниця між прийомом 1:30 год). Прохання перед записом перевіряти, чи є запис на цей час та дату (інакше база не запише вас на прийом). Дякую❤️`, {
                 reply_markup: {keyboard: keyboard.spisokProcedur}
             });
-        
-            // Ожидаем ответа от пользователя
-            bot.on('message', (msg) => {
+
+            const messageHandler = (msg) => {
                 if (msg.text && msg.text !== 'Процедури' && msg.text !== 'Зайняті дати та час' && msg.text !== 'Повернутися' && msg.text !== 'Список процедур' && msg.text !== 'Зв\'язатися з керівництвом' && msg.text !== 'Записатися' && msg.text !== 'Манікюр' && msg.text !== 'Педикюр' && msg.text !== 'Професіональний подологічний огляд' && msg.text !== 'Зайняті дати та час' && msg.text !== '/start') {
                     // Извлекаем данные из сообщения
                     const userData = {
@@ -138,16 +139,20 @@ bot.on('message', msg => {
                         phoneNumber: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[1],
                         procedura: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[2],
                         datee: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[3],
-                        timee: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[4]
+                        timee: msg.text.split(/(?:,|\s{2,}|\s|\н)+/)[4]
                     };
-        
+
                     if (userData.name && userData.phoneNumber && userData.procedura && userData.datee && userData.timee) {
                         // Проверяем, занято ли уже указанное время
+                        if (failed(userData, bot, chatId(msg))) {
+                            // Если время недоступно, не выполняем операции с базой данных
+                            return;
+                        }
                         const checkSql = `SELECT COUNT(*) AS count FROM zapici WHERE datee = ? AND timee = ?`;
                         connection.query(checkSql, [userData.datee, userData.timee], (err, results) => {
                             if (err) {
                                 bot.sendMessage(chatId(msg), `Приносимо пробачення, сталася помилка при перевірці наявності дати та часу. Відпишіть будь ласка @s0ulcats`);
-                            } else {
+                            }else {
                                 const count = results[0].count;
                                 if (count > 0) {
                                     bot.sendMessage(chatId(msg), `На жаль, на цю дату та час вже є запис. Будь ласка, оберіть інший час.`);
@@ -163,13 +168,42 @@ bot.on('message', msg => {
                                         }
                                     });
                                 }
+                                
                             }
                         });
-                    } else {
+                    } /*else {
                         bot.sendMessage(chatId(msg), 'Будь ласка, заповніть всі поля форми: Ім\'я, Номер телефону, Процедура, Дата, Час.');
-                    }
+                    }*/
                 }
-            });
+            };
+
+            // Удаляем предыдущий обработчик и регистрируем новый
+            bot.removeListener('message', messageHandler);
+            bot.on('message', messageHandler);
+            break;
+        case kb.recordings:
+            if (msg.from.username === 'S0ulcats') {
+                const selectAllSql = `SELECT name, phoneNumber, procedura, datee, timee FROM zapici`;
+                
+                connection.query(selectAllSql, (err, results) => {
+                    if (err) {
+                        bot.sendMessage(chatId(msg), 'Виникла помилка при отриманні записів з бази даних. Відпишіть будь ласка @s0ulcats');
+                        console.error('Error executing query:', err);
+                    } else {
+                        if (results.length > 0) {
+                            let response = 'Записи:\n\n';
+                            results.forEach((record, index) => {
+                                response += `${index + 1}. Ім'я: ${record.name}, Телефон: ${record.phoneNumber}, Процедура: ${record.procedura}, Дата: ${record.datee}, Час: ${record.timee}\n`;
+                            });
+                            bot.sendMessage(chatId(msg), response);
+                        } else {
+                            bot.sendMessage(chatId(msg), 'Записів у базі даних не знайдено.');
+                        }
+                    }
+                });
+            } else {
+                bot.sendMessage(chatId(msg), `Вибачте, у вас немає доступу до цієї функції.`);
+            }
             break;
         }
 })
