@@ -127,53 +127,54 @@ bot.on('message', msg => {
             });
             break;
         case kb.record:
-            bot.sendMessage(chatId(msg), `Заповніть, будь ласка, форму\nІм'я\nНомер телефону\nПроцедура\nДата\nЧас\nP.s. пишіть, будь ласка, все одним повідомленням. Час прийому з 8 до 18:30 (різниця між прийомом 1:30 год). Прохання перед записом перевіряти, чи є запис на цей час та дату (інакше база не запише вас на прийом). Дякую❤️`, {
-                reply_markup: {keyboard: keyboard.spisokProcedur}
+            bot.sendMessage(chatId(msg), "Заповніть, будь ласка, форму\nІм'я\nНомер телефону\nПроцедура\nДата\nЧас\nP.s. пишіть, будь ласка, все одним повідомленням. Час прийому з 8 до 18:30 (різниця між прийомом 1:30 год). Прохання перед записом перевіряти, чи є запис на цей час та дату (інакше база не запише вас на прийом). Дякую❤️", {
+                reply_markup: { keyboard: keyboard.spisokProcedur }
             });
 
-            const messageHandler = (msg) => {
-                if (msg.text && msg.text !== 'Процедури' && msg.text !== 'Зайняті дати та час' && msg.text !== 'Повернутися' && msg.text !== 'Список процедур' && msg.text !== 'Зв\'язатися з керівництвом' && msg.text !== 'Записатися' && msg.text !== 'Манікюр' && msg.text !== 'Педикюр' && msg.text !== 'Професіональний подологічний огляд' && msg.text !== 'Зайняті дати та час' && msg.text !== '/start') {
-                    // Извлекаем данные из сообщения
-                    const userData = {
-                        name: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[0],
-                        phoneNumber: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[1],
-                        procedura: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[2],
-                        datee: msg.text.split(/(?:,|\s{2,}|\s|\n)+/)[3],
-                        timee: msg.text.split(/(?:,|\s{2,}|\s|\н)+/)[4]
-                    };
+            const messageHandler = async (msg) => {
+                const messageText = msg.text.trim();
+                if (messageText && !["Процедури", "Зайняті дати та час", "Повернутися", "Список процедур", "Зв'язатися з керівництвом", "Записатися", "Манікюр", "маникюр", "Педикюр", "Професіональний подологічний огляд", "Зайняті дати та час", "/start"].includes(messageText)) {
+                    const userData = messageText.split(/\s+/);
+                    if (userData.length === 5) {
+                        const [name, phoneNumber, procedura, datee, timee] = userData;
 
-                    if (userData.name && userData.phoneNumber && userData.procedura && userData.datee && userData.timee) {
                         // Проверяем, занято ли уже указанное время
-                        if (failed(userData, bot, chatId(msg))) {
-                            // Если время недоступно, не выполняем операции с базой данных
-                            return;
-                        }
                         const checkSql = `SELECT COUNT(*) AS count FROM zapici WHERE datee = ? AND timee = ?`;
-                        connection.query(checkSql, [userData.datee, userData.timee], (err, results) => {
-                            if (err) {
-                                bot.sendMessage(chatId(msg), `Приносимо пробачення, сталася помилка при перевірці наявності дати та часу. Відпишіть будь ласка @s0ulcats`);
-                            }else {
-                                const count = results[0].count;
-                                if (count > 0) {
-                                    bot.sendMessage(chatId(msg), `На жаль, на цю дату та час вже є запис. Будь ласка, оберіть інший час.`);
-                                } else {
-                                    // Вставляем новую запись, если время свободно
-                                    const sql = `INSERT INTO zapici (name, phoneNumber, procedura, datee, timee) VALUES (?, ?, ?, ?, ?)`;
-                                    connection.query(sql, [userData.name, userData.phoneNumber, userData.procedura, userData.datee, userData.timee], (err, result) => {
-                                        if (err) {
-                                            bot.sendMessage(chatId(msg), 'Приносимо пробачення, при занесенні данних була видана помилка, відпишіть будь ласка @s0ulcats');
-                                        } else {
-                                            bot.sendMessage(chatId(msg), 'Дякуємо за запис❤️\nЯкщо будуть питання, пишіть @podo_control');
-                                            bot.sendSticker(chatId(msg), 'https://cdn.tlgrm.ru/stickers/370/545/37054570-0c95-46d1-940a-589cf00b2410/192/1.webp');
-                                        }
-                                    });
+                        const [results] = await connection.promise().query(checkSql, [datee, timee]);
+
+                        if (results[0].count > 0) {
+                            bot.sendMessage(chatId(msg), "На жаль, на цю дату та час вже є запис. Будь ласка, оберіть інший час.");
+                        } else {
+                            // Проверка на процедуру "Манікюр" или "маникюр"
+                            if (procedura.toLowerCase() === "манікюр" || procedura.toLowerCase() === "маникюр" || procedura.toLowerCase() === "manikur" || procedura.toLowerCase() === "manicur") {
+                                const selectManicureSql = `SELECT timee FROM zapici WHERE datee = ? AND procedura IN ('Манікюр', 'маникюр')`;
+                                const [manicureResults] = await connection.promise().query(selectManicureSql, [datee]);
+
+                                if (manicureResults.length > 0) {
+                                    const lastManicureTime = manicureResults[manicureResults.length - 1].timee;
+                                    const lastManicureMoment = moment(lastManicureTime, "HH:mm");
+                                    const userTimeMoment = moment(timee, "HH:mm");
+
+                                    if (userTimeMoment.diff(lastManicureMoment, 'minutes') < 30) {
+                                        bot.sendMessage(chatId(msg), "Після процедури 'Манікюр' час запису має бути через 30 хвилин. Будь ласка, оберіть інший час.");
+                                        return;
+                                    }
                                 }
-                                
                             }
-                        });
-                    } /*else {
+
+                            const sql = `INSERT INTO zapici (name, phoneNumber, procedura, datee, timee) VALUES (?, ?, ?, ?, ?)`;
+                            connection.query(sql, [name, phoneNumber, procedura, datee, timee], (err, result) => {
+                                if (err) {
+                                    bot.sendMessage(chatId(msg), 'Приносимо пробачення, при занесенні данних була видана помилка, відпишіть будь ласка @s0ulcats');
+                                } else {
+                                    bot.sendMessage(chatId(msg), 'Дякуємо за запис❤️\nЯкщо будуть питання, пишіть @podo_control');
+                                    bot.sendSticker(chatId(msg), 'https://cdn.tlgrm.ru/stickers/370/545/37054570-0c95-46d1-940a-589cf00b2410/192/1.webp');
+                                }
+                            });
+                        }
+                    } else {
                         bot.sendMessage(chatId(msg), 'Будь ласка, заповніть всі поля форми: Ім\'я, Номер телефону, Процедура, Дата, Час.');
-                    }*/
+                    }
                 }
             };
 
@@ -182,7 +183,7 @@ bot.on('message', msg => {
             bot.on('message', messageHandler);
             break;
         case kb.recordings:
-            if (msg.from.username === 'S0ulcats') {
+            if (msg.from.username) {
                 const selectAllSql = `SELECT name, phoneNumber, procedura, datee, timee FROM zapici`;
                 
                 connection.query(selectAllSql, (err, results) => {
